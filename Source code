@@ -1,0 +1,145 @@
+import pandas as pd
+
+# Load the dataset
+file_path = 'MMM_test_data.csv'
+data = pd.read_csv(file_path)
+
+# Display the first few rows of the dataset
+data.head()
+
+import numpy as np
+
+def adstock_transform(spend, theta):
+    adstocked_spend = np.zeros_like(spend)
+    adstocked_spend[0] = spend[0]
+    for t in range(1, len(spend)):
+        adstocked_spend[t] = spend[t] + theta * adstocked_spend[t-1]
+    return adstocked_spend
+
+# Apply adstock transformation to each channel with an assumed decay rate (e.g., 0.5)
+theta = 0.5
+for i in range(1, 8):
+    data[f'adstock_channel_{i}'] = adstock_transform(data[f'spend_channel_{i}'].values, theta)
+
+# Display the dataset with adstock columns
+data.head()
+
+import pymc as pm
+import arviz as az
+import numpy as np
+
+# Standardize the revenue for better sampling
+data['revenue_std'] = (data['revenue'] - data['revenue'].mean()) / data['revenue'].std()
+
+# Adstock transformation function
+def adstock_transform(spend, theta):
+    adstocked_spend = np.zeros_like(spend)
+    adstocked_spend[0] = spend[0]
+    for t in range(1, len(spend)):
+        adstocked_spend[t] = spend[t] + theta * adstocked_spend[t-1]
+    return adstocked_spend
+
+# Apply adstock transformation to each channel with an assumed decay rate (e.g., 0.5)
+theta = 0.5
+for i in range(1, 8):
+    data[f'adstock_channel_{i}'] = adstock_transform(data[f'spend_channel_{i}'].values, theta)
+
+# Bayesian mixed-media model
+with pm.Model() as model:
+    # Priors
+    intercept = pm.Normal('intercept', mu=0, sigma=1)
+    beta = pm.Normal('beta', mu=0, sigma=1, shape=7)
+    sigma = pm.HalfNormal('sigma', sigma=1)
+    
+    # Adstocked spend matrix
+    X = data[[f'adstock_channel_{i}' for i in range(1, 8)]].values
+
+    # Linear model
+    mu = intercept + pm.math.dot(X, beta)
+
+    # Likelihood
+    likelihood = pm.Normal('likelihood', mu=mu, sigma=sigma, observed=data['revenue_std'])
+
+    # Sampling
+    trace = pm.sample(1000, tune=1000, cores=2)
+
+# Plotting the trace
+az.plot_trace(trace)
+
+import pymc as pm
+import arviz as az
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Standardize the revenue for better sampling
+data['revenue_std'] = (data['revenue'] - data['revenue'].mean()) / data['revenue'].std()
+
+# Adstock transformation function
+def adstock_transform(spend, theta):
+    adstocked_spend = np.zeros_like(spend)
+    adstocked_spend[0] = spend[0]
+    for t in range(1, len(spend)):
+        adstocked_spend[t] = spend[t] + theta * adstocked_spend[t-1]
+    return adstocked_spend
+
+# Apply adstock transformation to each channel with an assumed decay rate (e.g., 0.5)
+theta = 0.5
+for i in range(1, 8):
+    data[f'adstock_channel_{i}'] = adstock_transform(data[f'spend_channel_{i}'].values, theta)
+
+# Bayesian mixed-media model
+with pm.Model() as model:
+    # Priors
+    intercept = pm.Normal('intercept', mu=0, sigma=1)
+    beta = pm.Normal('beta', mu=0, sigma=1, shape=7)
+    sigma = pm.HalfNormal('sigma', sigma=1)
+    
+    # Adstocked spend matrix
+    X = data[[f'adstock_channel_{i}' for i in range(1, 8)]].values
+
+    # Linear model
+    mu = intercept + pm.math.dot(X, beta)
+
+    # Likelihood
+    likelihood = pm.Normal('likelihood', mu=mu, sigma=sigma, observed=data['revenue_std'])
+
+    # Sampling
+    trace = pm.sample(1000, tune=1000, cores=2, return_inferencedata=True)
+
+# Plotting the trace
+az.plot_trace(trace)
+
+# Posterior predictive check
+with model:
+    ppc = pm.sample_posterior_predictive(trace, var_names=["likelihood"], random_seed=42)
+
+# Access the posterior predictive samples
+posterior_predictive_samples = ppc.posterior_predictive['likelihood']
+
+# Extracting the mean of the posterior predictive samples
+ppc_mean = posterior_predictive_samples.mean(axis=0)
+
+# Plotting the observed vs. predicted revenue
+plt.figure(figsize=(10, 5))
+plt.plot(data['revenue_std'], label='Observed', marker='o')
+plt.plot(ppc_mean, label='Predicted', marker='o')
+plt.xlabel('Time')
+plt.ylabel('Standardized Revenue')
+plt.legend()
+plt.title('Posterior Predictive Check')
+plt.show()
+
+# Summary of the trace
+summary = az.summary(trace)
+print(summary)
+
+# Calculate ROI for each channel
+channel_names = [f'adstock_channel_{i}' for i in range(1, 8)]
+roi = {}
+for i, channel in enumerate(channel_names):
+    beta_mean = trace.posterior['beta'].mean(dim=['chain', 'draw']).values[i]
+    spend_mean = data[channel].mean()
+    roi[channel] = beta_mean / spend_mean
+
+# Display ROI
+roi
